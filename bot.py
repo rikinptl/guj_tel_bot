@@ -2,7 +2,7 @@ import os
 import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 import docx
 from PyPDF2 import PdfReader
 import io
@@ -18,8 +18,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize translator
-translator = Translator()
+# Translator will be initialized per request to avoid issues
 
 # Get bot token from environment variable
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -91,9 +90,10 @@ def extract_text_from_file(file_content: bytes, file_name: str) -> str:
 def translate_to_gujarati(text: str) -> str:
     """Translate text to Gujarati."""
     try:
-        # Detect language and translate to Gujarati
-        result = translator.translate(text, dest='gu')
-        return result.text
+        # Translate to Gujarati (auto-detect source language)
+        translator = GoogleTranslator(source='auto', target='gu')
+        translated_text = translator.translate(text)
+        return translated_text
     except Exception as e:
         logger.error(f"Translation error: {e}")
         return f"Translation error: {str(e)}"
