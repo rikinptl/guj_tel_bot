@@ -210,21 +210,54 @@ def handler(request):
     import asyncio
     
     try:
+        # Handle GET requests (health check)
+        method = request.get('method', 'GET') if isinstance(request, dict) else getattr(request, 'method', 'GET')
+        if method == 'GET':
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'status': 'ok', 'message': 'Telegram bot webhook is ready'})
+            }
+        
         # Get request body - Vercel passes request as a dict-like object
         if isinstance(request, dict):
             body = request.get('body', {})
             if isinstance(body, str):
-                body = json.loads(body)
+                try:
+                    body = json.loads(body)
+                except json.JSONDecodeError:
+                    body = {}
         elif hasattr(request, 'get_json'):
-            body = request.get_json()
+            body = request.get_json() or {}
         elif hasattr(request, 'body'):
-            body = json.loads(request.body) if isinstance(request.body, str) else request.body
+            if isinstance(request.body, str):
+                try:
+                    body = json.loads(request.body)
+                except json.JSONDecodeError:
+                    body = {}
+            else:
+                body = request.body or {}
         else:
             body = {}
+        
+        # If body is empty, return success (for health checks)
+        if not body:
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'ok': True, 'message': 'No update received'})
+            }
         
         # Create update object from the webhook data
         app = get_application()
         update = Update.de_json(body, app.bot)
+        
+        if update is None:
+            return {
+                'statusCode': 200,
+                'headers': {'Content-Type': 'application/json'},
+                'body': json.dumps({'ok': True, 'message': 'Invalid update format'})
+            }
         
         # Process the update asynchronously
         try:
