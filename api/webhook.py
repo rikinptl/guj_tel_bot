@@ -210,8 +210,16 @@ def handler(request):
     import asyncio
     
     try:
+        # Log request type for debugging
+        logger.info(f"Request type: {type(request)}, Request: {str(request)[:200]}")
+        
         # Handle GET requests (health check)
-        method = request.get('method', 'GET') if isinstance(request, dict) else getattr(request, 'method', 'GET')
+        method = None
+        if isinstance(request, dict):
+            method = request.get('method', request.get('httpMethod', 'GET'))
+        else:
+            method = getattr(request, 'method', getattr(request, 'httpMethod', 'GET'))
+        
         if method == 'GET':
             return {
                 'statusCode': 200,
@@ -219,14 +227,19 @@ def handler(request):
                 'body': json.dumps({'status': 'ok', 'message': 'Telegram bot webhook is ready'})
             }
         
-        # Get request body - Vercel passes request as a dict-like object
+        # Get request body - Vercel Python runtime passes request as dict
+        body = {}
         if isinstance(request, dict):
-            body = request.get('body', {})
-            if isinstance(body, str):
+            # Vercel format: request['body'] is a string that needs parsing
+            raw_body = request.get('body', '{}')
+            if isinstance(raw_body, str):
                 try:
-                    body = json.loads(body)
+                    body = json.loads(raw_body)
                 except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse body: {raw_body[:100]}")
                     body = {}
+            else:
+                body = raw_body or {}
         elif hasattr(request, 'get_json'):
             body = request.get_json() or {}
         elif hasattr(request, 'body'):
@@ -237,8 +250,8 @@ def handler(request):
                     body = {}
             else:
                 body = request.body or {}
-        else:
-            body = {}
+        
+        logger.info(f"Parsed body: {str(body)[:200]}")
         
         # If body is empty, return success (for health checks)
         if not body:
@@ -253,6 +266,7 @@ def handler(request):
         update = Update.de_json(body, app.bot)
         
         if update is None:
+            logger.warning("Update is None after parsing")
             return {
                 'statusCode': 200,
                 'headers': {'Content-Type': 'application/json'},
@@ -278,9 +292,10 @@ def handler(request):
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
         import traceback
-        logger.error(traceback.format_exc())
+        error_trace = traceback.format_exc()
+        logger.error(error_trace)
         return {
             'statusCode': 500,
             'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'ok': False, 'error': str(e)})
+            'body': json.dumps({'ok': False, 'error': str(e), 'trace': error_trace[:500]})
         }
